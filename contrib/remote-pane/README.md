@@ -30,7 +30,7 @@ there, and let the remote agent's hooks phone home.
 ```
 hub (herdr server)                      remote box
 ┌──────────────────────┐                ┌─────────────────────────┐
-│ pane: herdrssh ─┼── ssh -t -R ──┼→ claude / opencode / …  │
+│ pane: herdrssh ──────┼── ssh -t -R ──┼→ claude / opencode / …  │
 │   $HERDR_SOCKET_PATH ←┼── forwarded ──┼─ agent hooks report     │
 │                      │    unix sock   │  pane.report_agent      │
 └──────────────────────┘                └─────────────────────────┘
