@@ -52,11 +52,15 @@ sq() {
 
 # Build the remote command: re-export the pane identity, clean the forwarded
 # socket up on exit, then run the requested command (or a login shell).
+# Commands run through the user's login shell so PATH additions from the
+# remote profile (~/.local/bin, nvm, …) apply — agents are rarely on the
+# default non-login PATH.
 if [ "$#" -gt 0 ]; then
-    run=""
+    quoted=""
     for arg in "$@"; do
-        run="$run '$(sq "$arg")'"
+        quoted="$quoted '$(sq "$arg")'"
     done
+    run=" \"\${SHELL:-/bin/sh}\" -l -c '$(sq "$quoted")'"
 else
     run=' "${SHELL:-/bin/sh}" -l'
 fi
