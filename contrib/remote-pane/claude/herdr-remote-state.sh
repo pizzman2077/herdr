@@ -4,7 +4,7 @@
 #
 # The managed claude integration (herdr:claude) only reports session ids;
 # claude *state* normally comes from herdr's screen scanning of the local
-# process tree. In a remote pane (herdr-ssh-pane) the hub only sees an ssh
+# process tree. In a remote pane (herdrssh) the hub only sees an ssh
 # process, so screen scanning never runs. This hook fills the gap: it maps
 # Claude Code lifecycle events to pane.report_agent calls with the source
 # "custom:claude-remote", which herdr arbitrates as hook authority.

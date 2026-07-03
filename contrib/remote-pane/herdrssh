@@ -1,5 +1,5 @@
 #!/bin/sh
-# herdr-ssh-pane — run a remote agent in a herdr pane with state reporting.
+# herdrssh — run a remote agent in a herdr pane with state reporting.
 #
 # Run this INSIDE a herdr pane on the hub. It ssh-es to <host>, forwards this
 # pane's herdr control socket to the remote side (unix socket -> unix socket),
@@ -8,14 +8,14 @@
 # hub server, so the pane shows up as a real agent instead of "ssh".
 #
 # usage:
-#   herdr-ssh-pane <host> [command [args...]]
+#   herdrssh <host> [command [args...]]
 #
-#   herdr-ssh-pane llm claude
-#   herdr-ssh-pane llm opencode
-#   herdr-ssh-pane workbox            # login shell; launch agents by hand
+#   herdrssh llm claude
+#   herdrssh llm opencode
+#   herdrssh workbox            # login shell; launch agents by hand
 #
 # Extra ssh options can be passed via HERDR_SSH_OPTS, e.g.:
-#   HERDR_SSH_OPTS="-J bastion" herdr-ssh-pane workbox claude
+#   HERDR_SSH_OPTS="-J bastion" herdrssh workbox claude
 #
 # Requirements:
 #   hub:    run from inside a herdr pane (HERDR_PANE_ID / HERDR_SOCKET_PATH set)
@@ -26,11 +26,11 @@
 set -eu
 
 die() {
-    echo "herdr-ssh-pane: $*" >&2
+    echo "herdrssh: $*" >&2
     exit 1
 }
 
-[ "$#" -ge 1 ] || die "usage: herdr-ssh-pane <host> [command [args...]]"
+[ "$#" -ge 1 ] || die "usage: herdrssh <host> [command [args...]]"
 
 host="$1"
 shift

@@ -30,7 +30,7 @@ there, and let the remote agent's hooks phone home.
 ```
 hub (herdr server)                      remote box
 ┌──────────────────────┐                ┌─────────────────────────┐
-│ pane: herdr-ssh-pane ─┼── ssh -t -R ──┼→ claude / opencode / …  │
+│ pane: herdrssh ─┼── ssh -t -R ──┼→ claude / opencode / …  │
 │   $HERDR_SOCKET_PATH ←┼── forwarded ──┼─ agent hooks report     │
 │                      │    unix sock   │  pane.report_agent      │
 └──────────────────────┘                └─────────────────────────┘
@@ -40,10 +40,10 @@ hub (herdr server)                      remote box
 
 ### Hub (the box running the herdr server)
 
-Copy `herdr-ssh-pane` somewhere on `PATH` and make it executable:
+Copy `herdrssh` somewhere on `PATH` and make it executable:
 
 ```sh
-install -m 0755 contrib/remote-pane/herdr-ssh-pane ~/.local/bin/
+install -m 0755 contrib/remote-pane/herdrssh ~/.local/bin/
 ```
 
 ### Remote boxes
@@ -71,10 +71,10 @@ herdr integration install opencode
 Inside a herdr pane on the hub:
 
 ```sh
-herdr-ssh-pane workbox claude          # remote claude, shows state in herdr
-herdr-ssh-pane workbox opencode
-herdr-ssh-pane workbox                 # plain login shell, launch things by hand
-HERDR_SSH_OPTS="-J bastion" herdr-ssh-pane gpu-box claude
+herdrssh workbox claude          # remote claude, shows state in herdr
+herdrssh workbox opencode
+herdrssh workbox                 # plain login shell, launch things by hand
+HERDR_SSH_OPTS="-J bastion" herdrssh gpu-box claude
 ```
 
 ## Agent support matrix
