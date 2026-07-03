@@ -82,6 +82,9 @@ pub struct TerminalState {
     pub persisted_agent_session: Option<crate::agent_resume::PersistedAgentSession>,
     pub manual_label: Option<String>,
     pub agent_name: Option<String>,
+    /// Destination host of the ssh client in the pane's foreground job, if
+    /// any. Presentation-only: lets the UI show where a remote pane points.
+    pub remote_host: Option<String>,
     hook_report_sequences: HashMap<String, u64>,
     suppressed_full_lifecycle_hook_reports: HashMap<String, SuppressedFullLifecycleHookReport>,
     stale_full_lifecycle_hook_sessions: HashMap<String, Vec<StaleFullLifecycleHookSession>>,
@@ -109,6 +112,7 @@ impl TerminalState {
             persisted_agent_session: None,
             manual_label: None,
             agent_name: None,
+            remote_host: None,
             hook_report_sequences: HashMap::new(),
             suppressed_full_lifecycle_hook_reports: HashMap::new(),
             stale_full_lifecycle_hook_sessions: HashMap::new(),

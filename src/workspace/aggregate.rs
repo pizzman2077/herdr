@@ -43,14 +43,23 @@ impl Tab {
             .filter_map(|id| {
                 let pane = self.panes.get(id)?;
                 let terminal = terminals.get(&pane.attached_terminal_id)?;
-                let fallback_agent_label = terminal
+                let base_label = terminal
                     .agent_name
                     .as_deref()
-                    .or_else(|| terminal.effective_agent_label())?
-                    .to_string();
-                let agent_label = terminal
-                    .effective_display_agent()
-                    .unwrap_or_else(|| fallback_agent_label.clone());
+                    .or_else(|| terminal.effective_agent_label())
+                    .map(str::to_string);
+                // Remote panes are labeled with their ssh destination: an
+                // agent reported over a forwarded socket shows as
+                // "claude@jetson", a plain remote shell as "ssh:jetson".
+                let agent_label = match (
+                    terminal.effective_display_agent().or(base_label),
+                    terminal.remote_host.as_deref(),
+                ) {
+                    (Some(label), Some(host)) => format!("{label}@{host}"),
+                    (Some(label), None) => label,
+                    (None, Some(host)) => format!("ssh:{host}"),
+                    (None, None) => return None,
+                };
                 let presentation = terminal.effective_presentation();
                 Some(PaneDetail {
                     pane_id: *id,

@@ -273,6 +273,64 @@ pub fn foreground_process_group_id(child_pid: u32) -> Option<u32> {
     crate::platform::foreground_process_group_id(child_pid)
 }
 
+/// ssh options that consume a following argument (`man ssh`, the option
+/// string of the argv parser). Everything else is a boolean flag.
+const SSH_OPTS_WITH_ARG: &str = "BbcDEeFIiJLlmOopQRSWw";
+
+/// Extract the destination host from an `ssh` argv: the first non-option
+/// argument, minus any `ssh://` scheme, `user@` prefix, or `:port` suffix.
+fn ssh_destination_from_argv(argv: &[String]) -> Option<String> {
+    let mut args = argv.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(flags) = arg.strip_prefix('-') {
+            if flags.is_empty() {
+                continue;
+            }
+            let mut chars = flags.chars();
+            while let Some(flag) = chars.next() {
+                if SSH_OPTS_WITH_ARG.contains(flag) {
+                    // Argument either attached (-p2222) or the next token.
+                    if chars.as_str().is_empty() {
+                        args.next();
+                    }
+                    break;
+                }
+            }
+            continue;
+        }
+
+        let uri = arg.strip_prefix("ssh://");
+        let dest = uri.unwrap_or(arg);
+        let dest = dest.rsplit('@').next().unwrap_or(dest);
+        let dest = if uri.is_some() {
+            dest.split([':', '/']).next().unwrap_or(dest)
+        } else {
+            dest
+        };
+        if dest.is_empty() {
+            return None;
+        }
+        return Some(dest.to_string());
+    }
+    None
+}
+
+/// If the pane's foreground job is an ssh client, return the remote
+/// destination host. Used to label remote panes in the UI.
+pub fn ssh_destination_in_job(job: &crate::platform::ForegroundJob) -> Option<String> {
+    job.processes.iter().find_map(|process| {
+        let bin = process
+            .argv0
+            .as_deref()
+            .map(path_basename)
+            .unwrap_or(&process.name);
+        if bin != "ssh" && process.name != "ssh" {
+            return None;
+        }
+        ssh_destination_from_argv(process.argv.as_deref()?)
+    })
+}
+
 fn normalized_process_name(process: &crate::platform::ForegroundProcess) -> String {
     let effective = process.argv0.as_deref().unwrap_or(&process.name);
     let lower_effective = effective.to_lowercase();
@@ -602,6 +660,83 @@ mod tests {
 
         assert_eq!(detection.state, AgentState::Working);
         assert!(detection.visible_working);
+    }
+
+    // ---- ssh destination ----
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_string()).collect()
+    }
+
+    #[test]
+    fn ssh_destination_plain_host() {
+        assert_eq!(
+            ssh_destination_from_argv(&argv(&["ssh", "jetson"])).as_deref(),
+            Some("jetson")
+        );
+    }
+
+    #[test]
+    fn ssh_destination_strips_user_and_scheme() {
+        assert_eq!(
+            ssh_destination_from_argv(&argv(&["ssh", "p@stream"])).as_deref(),
+            Some("stream")
+        );
+        assert_eq!(
+            ssh_destination_from_argv(&argv(&["ssh", "ssh://p@stream:2222"])).as_deref(),
+            Some("stream")
+        );
+    }
+
+    #[test]
+    fn ssh_destination_skips_options_with_arguments() {
+        assert_eq!(
+            ssh_destination_from_argv(&argv(&[
+                "ssh",
+                "-t",
+                "-R",
+                "/tmp/x.sock:/run/y.sock",
+                "-p",
+                "2222",
+                "-o",
+                "BatchMode=yes",
+                "jetson",
+                "sh",
+                "-c",
+                "claude"
+            ]))
+            .as_deref(),
+            Some("jetson")
+        );
+        // Attached option arguments (-p2222) must not eat the destination.
+        assert_eq!(
+            ssh_destination_from_argv(&argv(&["ssh", "-p2222", "-4t", "jetson"])).as_deref(),
+            Some("jetson")
+        );
+    }
+
+    #[test]
+    fn ssh_destination_none_without_destination() {
+        assert_eq!(ssh_destination_from_argv(&argv(&["ssh", "-p", "22"])), None);
+        assert_eq!(ssh_destination_from_argv(&argv(&["ssh"])), None);
+    }
+
+    #[test]
+    fn ssh_destination_in_job_matches_ssh_process_only() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 10,
+            processes: vec![
+                foreground_process(9, "bash", &["bash"]),
+                foreground_process(10, "ssh", &["ssh", "-t", "streetmeat@jetson"]),
+            ],
+        };
+        assert_eq!(ssh_destination_in_job(&job).as_deref(), Some("jetson"));
+
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 9,
+            processes: vec![foreground_process(9, "bash", &["bash"])],
+        };
+        assert_eq!(ssh_destination_in_job(&job), None);
     }
 
     // ---- Agent identification ----

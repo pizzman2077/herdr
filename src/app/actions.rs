@@ -2386,6 +2386,21 @@ impl AppState {
                 }
                 Vec::new()
             }
+            AppEvent::RemoteHostChanged {
+                pane_id,
+                remote_host,
+            } => {
+                let terminal_id = self.workspaces.iter().find_map(|ws| {
+                    ws.pane_state(pane_id)
+                        .map(|pane| pane.attached_terminal_id.clone())
+                });
+                if let Some(terminal) =
+                    terminal_id.and_then(|terminal_id| self.terminals.get_mut(&terminal_id))
+                {
+                    terminal.remote_host = remote_host;
+                }
+                Vec::new()
+            }
             AppEvent::StateChanged {
                 pane_id,
                 agent,

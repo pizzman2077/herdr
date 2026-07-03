@@ -172,6 +172,31 @@ async fn publish_state_changed_event(
     }
 }
 
+async fn publish_remote_host_if_changed(
+    state_events: &mpsc::Sender<AppEvent>,
+    pane_id: PaneId,
+    last_remote_host: &mut Option<String>,
+    remote_host: Option<String>,
+) {
+    if *last_remote_host == remote_host {
+        return;
+    }
+    *last_remote_host = remote_host.clone();
+    if let Err(e) = state_events
+        .send(AppEvent::RemoteHostChanged {
+            pane_id,
+            remote_host,
+        })
+        .await
+    {
+        warn!(
+            pane = pane_id.raw(),
+            err = %e,
+            "failed to deliver RemoteHostChanged event"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AgentDetectionPublishUpdate {
     state: AgentState,
@@ -406,6 +431,7 @@ struct ProcessProbeResult {
     foreground_is_pane_shell: bool,
     agent: Option<Agent>,
     process_name: Option<String>,
+    remote_host: Option<String>,
 }
 
 fn agent_hint_for_foreground_job_members(
@@ -451,6 +477,7 @@ fn process_probe_result(
         foreground_is_pane_shell: job.processes.iter().any(|process| process.pid == pid),
         agent: Some(agent),
         process_name: Some(process_name),
+        remote_host: None,
     }
 }
 
@@ -507,11 +534,17 @@ fn probe_foreground_process_from_jobs(
         }
 
         let identified = crate::detect::identify_agent_in_job(job);
+        let remote_host = if identified.is_none() {
+            crate::detect::ssh_destination_in_job(job)
+        } else {
+            None
+        };
         return ProcessProbeResult {
             process_group_id: Some(job.process_group_id),
             foreground_is_pane_shell: job.processes.iter().any(|process| process.pid == pid),
             agent: identified.as_ref().map(|(agent, _)| *agent),
             process_name: identified.map(|(_, process_name)| process_name),
+            remote_host,
         };
     }
 
@@ -520,6 +553,7 @@ fn probe_foreground_process_from_jobs(
         foreground_is_pane_shell: false,
         agent: None,
         process_name: None,
+        remote_host: None,
     }
 }
 
@@ -570,6 +604,7 @@ fn spawn_basic_detection_task(
         let mut last_screen_scan_detection_content_seq = None;
         let mut agent_startup_grace_until = None;
         let mut pending_idle = PendingIdleConfirmation::default();
+        let mut last_remote_host: Option<String> = None;
 
         loop {
             let sleep_duration = if pending_idle.active() {
@@ -598,6 +633,9 @@ fn spawn_basic_detection_task(
                     last_screen_scan_detection_content_seq = None;
                     agent_startup_grace_until = None;
                     pending_idle.clear();
+                    // Sentinel no probe can produce: forces a republish so a
+                    // respawned pane cannot keep a stale remote host.
+                    last_remote_host = Some(String::new());
                 }
             }
 
@@ -643,6 +681,13 @@ fn spawn_basic_detection_task(
                 let had_process_probe = has_process_probe;
                 has_process_probe = true;
                 let probe = probe_foreground_process(pid, foreground_pgid);
+                publish_remote_host_if_changed(
+                    &state_events,
+                    pane_id,
+                    &mut last_remote_host,
+                    probe.remote_host.clone(),
+                )
+                .await;
                 let process_group_id = probe.process_group_id;
                 let foreground_is_pane_shell = probe.foreground_is_pane_shell;
                 let mut new_agent = probe.agent;
@@ -1961,6 +2006,7 @@ impl PaneRuntime {
                 let mut last_screen_scan_detection_content_seq = None;
                 let mut agent_startup_grace_until = None;
                 let mut pending_idle = PendingIdleConfirmation::default();
+                let mut last_remote_host: Option<String> = None;
 
                 tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -1999,6 +2045,9 @@ impl PaneRuntime {
                             last_screen_scan_detection_content_seq = None;
                             agent_startup_grace_until = None;
                             pending_idle.clear();
+                            // Sentinel no probe can produce: forces a republish so a
+                            // respawned pane cannot keep a stale remote host.
+                            last_remote_host = Some(String::new());
                         }
                     }
 
@@ -2045,6 +2094,13 @@ impl PaneRuntime {
                         has_process_probe = true;
                         if pid > 0 {
                             let probe = probe_foreground_process(pid, foreground_pgid);
+                            publish_remote_host_if_changed(
+                                &state_events,
+                                pane_id,
+                                &mut last_remote_host,
+                                probe.remote_host.clone(),
+                            )
+                            .await;
                             let process_name = probe.process_name;
                             let process_group_id = probe.process_group_id;
                             let foreground_is_pane_shell = probe.foreground_is_pane_shell;

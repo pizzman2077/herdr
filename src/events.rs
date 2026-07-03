@@ -66,6 +66,11 @@ pub enum AppEvent {
         process_exited: bool,
         observed_at: Instant,
     },
+    /// The ssh destination of a pane's foreground job changed (or cleared).
+    RemoteHostChanged {
+        pane_id: PaneId,
+        remote_host: Option<String>,
+    },
     /// Hook-authoritative agent state was reported for a pane.
     HookStateReported {
         pane_id: PaneId,
