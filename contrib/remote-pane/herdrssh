@@ -32,6 +32,9 @@ die() {
 }
 
 workdir=""
+host=""
+# Accept -C before or after the host: the first non-option arg is the host,
+# everything after the second non-option arg is the remote command verbatim.
 while [ "$#" -gt 0 ]; do
     case "$1" in
         -C)
@@ -51,15 +54,17 @@ while [ "$#" -gt 0 ]; do
             die "unknown option: $1"
             ;;
         *)
-            break
+            if [ -z "$host" ]; then
+                host="$1"
+                shift
+            else
+                break
+            fi
             ;;
     esac
 done
 
-[ "$#" -ge 1 ] || die "usage: herdrssh [-C dir] <host> [command [args...]]"
-
-host="$1"
-shift
+[ -n "$host" ] || die "usage: herdrssh [-C dir] <host> [command [args...]]"
 
 [ "${HERDR_ENV:-}" = "1" ] || die "not inside a herdr pane (HERDR_ENV != 1)"
 [ -n "${HERDR_PANE_ID:-}" ] || die "HERDR_PANE_ID is not set"
