@@ -85,6 +85,20 @@ if event == "Notification":
     if isinstance(message, str) and message:
         params["message"] = message
 
+# Report the working directory so the hub's agent panel can show where the
+# remote agent is running. The server caps custom_status at 32 chars, so
+# shorten: $HOME -> ~, then keep the tail of anything still too long.
+cwd = hook_input.get("cwd")
+if isinstance(cwd, str) and cwd:
+    home = os.path.expanduser("~")
+    if home and cwd == home:
+        cwd = "~"
+    elif home and cwd.startswith(home + "/"):
+        cwd = "~" + cwd[len(home):]
+    if len(cwd) > 32:
+        cwd = "…" + cwd[-31:]
+    params["custom_status"] = cwd
+
 session_id = hook_input.get("session_id")
 if isinstance(session_id, str) and session_id:
     params["agent_session_id"] = session_id
