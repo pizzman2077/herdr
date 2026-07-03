@@ -1,0 +1,74 @@
+#!/bin/sh
+# herdr-ssh-pane — run a remote agent in a herdr pane with state reporting.
+#
+# Run this INSIDE a herdr pane on the hub. It ssh-es to <host>, forwards this
+# pane's herdr control socket to the remote side (unix socket -> unix socket),
+# and re-exports the pane identity env there. Any herdr hook/integration on
+# the remote box then reports agent identity and state straight back into the
+# hub server, so the pane shows up as a real agent instead of "ssh".
+#
+# usage:
+#   herdr-ssh-pane <host> [command [args...]]
+#
+#   herdr-ssh-pane llm claude
+#   herdr-ssh-pane llm opencode
+#   herdr-ssh-pane workbox            # login shell; launch agents by hand
+#
+# Extra ssh options can be passed via HERDR_SSH_OPTS, e.g.:
+#   HERDR_SSH_OPTS="-J bastion" herdr-ssh-pane workbox claude
+#
+# Requirements:
+#   hub:    run from inside a herdr pane (HERDR_PANE_ID / HERDR_SOCKET_PATH set)
+#   remote: sshd with AllowStreamLocalForwarding (default: yes)
+#   remote: herdr hook assets installed for the agents you use
+#           (see contrib/remote-pane/README.md)
+
+set -eu
+
+die() {
+    echo "herdr-ssh-pane: $*" >&2
+    exit 1
+}
+
+[ "$#" -ge 1 ] || die "usage: herdr-ssh-pane <host> [command [args...]]"
+
+host="$1"
+shift
+
+[ "${HERDR_ENV:-}" = "1" ] || die "not inside a herdr pane (HERDR_ENV != 1)"
+[ -n "${HERDR_PANE_ID:-}" ] || die "HERDR_PANE_ID is not set"
+[ -n "${HERDR_SOCKET_PATH:-}" ] || die "HERDR_SOCKET_PATH is not set"
+[ -S "$HERDR_SOCKET_PATH" ] || die "herdr socket not found at $HERDR_SOCKET_PATH"
+
+# Unique remote socket path: no clash between panes, no stale-bind failures,
+# so no sshd StreamLocalBindUnlink requirement.
+pane_tag=$(printf '%s' "$HERDR_PANE_ID" | tr -cs 'A-Za-z0-9' '-')
+remote_sock="/tmp/herdr-remote-${pane_tag}-$$-$(date +%s).sock"
+
+# Escape a string for embedding inside single quotes.
+sq() {
+    printf "%s" "$1" | sed "s/'/'\\\\''/g"
+}
+
+# Build the remote command: re-export the pane identity, clean the forwarded
+# socket up on exit, then run the requested command (or a login shell).
+if [ "$#" -gt 0 ]; then
+    run=""
+    for arg in "$@"; do
+        run="$run '$(sq "$arg")'"
+    done
+else
+    run=' "${SHELL:-/bin/sh}" -l'
+fi
+
+remote_script="export HERDR_ENV=1
+export HERDR_PANE_ID='$(sq "$HERDR_PANE_ID")'
+export HERDR_SOCKET_PATH='$(sq "$remote_sock")'
+trap 'rm -f \"\$HERDR_SOCKET_PATH\"' EXIT HUP INT TERM
+$run"
+
+# shellcheck disable=SC2086  # HERDR_SSH_OPTS is intentionally word-split
+exec ssh -t ${HERDR_SSH_OPTS:-} \
+    -R "$remote_sock:$HERDR_SOCKET_PATH" \
+    "$host" \
+    "sh -c '$(sq "$remote_script")'"
