@@ -8,10 +8,11 @@
 # hub server, so the pane shows up as a real agent instead of "ssh".
 #
 # usage:
-#   herdrssh <host> [command [args...]]
+#   herdrssh [-C dir] <host> [command [args...]]
 #
 #   herdrssh llm claude
 #   herdrssh llm opencode
+#   herdrssh -C ~/src/myproj jetson claude   # start in a remote directory
 #   herdrssh workbox            # login shell; launch agents by hand
 #
 # Extra ssh options can be passed via HERDR_SSH_OPTS, e.g.:
@@ -30,7 +31,32 @@ die() {
     exit 1
 }
 
-[ "$#" -ge 1 ] || die "usage: herdrssh <host> [command [args...]]"
+workdir=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -C)
+            [ "$#" -ge 2 ] || die "-C requires a directory argument"
+            workdir="$2"
+            shift 2
+            ;;
+        -C*)
+            workdir="${1#-C}"
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[ "$#" -ge 1 ] || die "usage: herdrssh [-C dir] <host> [command [args...]]"
 
 host="$1"
 shift
@@ -65,11 +91,24 @@ else
     run=' "${SHELL:-/bin/sh}" -l'
 fi
 
+# Optional starting directory. A leading ~ is expanded remotely via $HOME
+# (the path is otherwise single-quoted, which would defeat tilde expansion).
+cd_cmd=""
+if [ -n "$workdir" ]; then
+    case "$workdir" in
+        "~")   cd_target='"$HOME"' ;;
+        "~/"*) cd_target="\"\$HOME\"/'$(sq "${workdir#??}")'" ;;
+        *)     cd_target="'$(sq "$workdir")'" ;;
+    esac
+    cd_cmd="cd $cd_target || exit 1
+"
+fi
+
 remote_script="export HERDR_ENV=1
 export HERDR_PANE_ID='$(sq "$HERDR_PANE_ID")'
 export HERDR_SOCKET_PATH='$(sq "$remote_sock")'
 trap 'rm -f \"\$HERDR_SOCKET_PATH\"' EXIT HUP INT TERM
-$run"
+$cd_cmd$run"
 
 # shellcheck disable=SC2086  # HERDR_SSH_OPTS is intentionally word-split
 exec ssh -t ${HERDR_SSH_OPTS:-} \

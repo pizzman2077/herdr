@@ -74,6 +74,7 @@ Inside a herdr pane on the hub:
 herdrssh workbox claude          # remote claude, shows state in herdr
 herdrssh workbox opencode
 herdrssh workbox                 # plain login shell, launch things by hand
+herdrssh -C ~/src/myproj workbox claude   # start in a remote directory
 HERDR_SSH_OPTS="-J bastion" herdrssh gpu-box claude
 ```
 
